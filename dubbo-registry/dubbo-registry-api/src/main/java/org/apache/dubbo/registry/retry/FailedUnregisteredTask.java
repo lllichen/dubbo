@@ -14,31 +14,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.dubbo.cache.support.expiring;
 
-import org.apache.dubbo.cache.Cache;
-import org.apache.dubbo.cache.support.AbstractCacheFactory;
+package org.apache.dubbo.registry.retry;
+
 import org.apache.dubbo.common.URL;
-
+import org.apache.dubbo.common.timer.Timeout;
+import org.apache.dubbo.registry.support.FailbackRegistry;
 
 /**
- * Implement {@link org.apache.dubbo.cache.CacheFactory} by extending {@link AbstractCacheFactory} and provide
- * instance of new {@link ExpiringCache}.
- *
- * @see AbstractCacheFactory
- * @see ExpiringCache
- * @see Cache
+ * FailedUnregisteredTask
  */
+public final class FailedUnregisteredTask extends AbstractRetryTask {
 
-public class ExpiringCacheFactory extends AbstractCacheFactory {
+    private static final String NAME = "retry unregister";
 
-    /**
-     * Takes url as an method argument and return new instance of cache store implemented by JCache.
-     * @param url url of the method
-     * @return ExpiringCache instance of cache
-     */
+    public FailedUnregisteredTask(URL url, FailbackRegistry registry) {
+        super(url, registry, NAME);
+    }
+
     @Override
-    protected Cache createCache(URL url) {
-        return new ExpiringCache(url);
+    protected void doRetry(URL url, FailbackRegistry registry, Timeout timeout) {
+        registry.doUnregister(url);
+        registry.removeFailedUnregisteredTask(url);
     }
 }
