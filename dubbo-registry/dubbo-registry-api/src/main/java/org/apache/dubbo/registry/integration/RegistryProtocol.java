@@ -18,6 +18,7 @@ package org.apache.dubbo.registry.integration;
 
 import org.apache.dubbo.common.Constants;
 import org.apache.dubbo.common.URL;
+import org.apache.dubbo.common.URLBuilder;
 import org.apache.dubbo.common.config.ConfigurationUtils;
 import org.apache.dubbo.common.extension.ExtensionLoader;
 import org.apache.dubbo.common.logger.Logger;
@@ -48,6 +49,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 
 import static java.util.concurrent.Executors.newSingleThreadExecutor;
@@ -99,7 +101,7 @@ public class RegistryProtocol implements Protocol {
     private final ProviderConfigurationListener providerConfigurationListener = new ProviderConfigurationListener();
     //To solve the problem of RMI repeated exposure port conflicts, the services that have been exposed are no longer exposed.
     //providerurl <--> exporter
-    private final Map<String, ExporterChangeableWrapper<?>> bounds = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, ExporterChangeableWrapper<?>> bounds = new ConcurrentHashMap<>();
     private Cluster cluster;
     private Protocol protocol;
     private RegistryFactory registryFactory;
@@ -212,19 +214,11 @@ public class RegistryProtocol implements Protocol {
     @SuppressWarnings("unchecked")
     private <T> ExporterChangeableWrapper<T> doLocalExport(final Invoker<T> originInvoker, URL providerUrl) {
         String key = getCacheKey(originInvoker);
-        ExporterChangeableWrapper<T> exporter = (ExporterChangeableWrapper<T>) bounds.get(key);
-        if (exporter == null) {
-            synchronized (bounds) {
-                exporter = (ExporterChangeableWrapper<T>) bounds.get(key);
-                if (exporter == null) {
 
-                    final Invoker<?> invokerDelegete = new InvokerDelegate<T>(originInvoker, providerUrl);
-                    exporter = new ExporterChangeableWrapper<T>((Exporter<T>) protocol.export(invokerDelegete), originInvoker);
-                    bounds.put(key, exporter);
-                }
-            }
-        }
-        return exporter;
+        return (ExporterChangeableWrapper<T>) bounds.computeIfAbsent(key, s -> {
+            Invoker<?> invokerDelegete = new InvokerDelegate<>(originInvoker, providerUrl);
+            return new ExporterChangeableWrapper<>((Exporter<T>) protocol.export(invokerDelegete), originInvoker);
+        });
     }
 
     public <T> void reExport(final Invoker<T> originInvoker, URL newInvokerUrl) {
@@ -343,7 +337,10 @@ public class RegistryProtocol implements Protocol {
     @Override
     @SuppressWarnings("unchecked")
     public <T> Invoker<T> refer(Class<T> type, URL url) throws RpcException {
-        url = url.setProtocol(url.getParameter(REGISTRY_KEY, DEFAULT_REGISTRY)).removeParameter(REGISTRY_KEY);
+        url = URLBuilder.from(url)
+                .setProtocol(url.getParameter(REGISTRY_KEY, DEFAULT_REGISTRY))
+                .removeParameter(REGISTRY_KEY)
+                .build();
         Registry registry = registryFactory.getRegistry(url);
         if (RegistryService.class.equals(type)) {
             return proxyFactory.getInvoker((T) registry, type, url);
